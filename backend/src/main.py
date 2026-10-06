@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import sys
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Dict, Iterator, Optional
+from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -17,8 +18,8 @@ from pydantic import BaseModel, Field
 # Load backend/.env before Configuration.from_env()
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from config import Configuration, SearchAPI
 from agent import DeepResearchAgent
+from config import Configuration, SearchAPI
 
 # 添加控制台日志处理程序
 logger.add(
@@ -60,7 +61,7 @@ class ResearchResponse(BaseModel):
     )
 
 
-def _mask_secret(value: Optional[str], visible: int = 4) -> str:
+def _mask_secret(value: str | None, visible: int = 4) -> str:
     """Mask sensitive tokens while keeping leading and trailing characters."""
     if not value:
         return "unset"
@@ -72,7 +73,7 @@ def _mask_secret(value: Optional[str], visible: int = 4) -> str:
 
 
 def _build_config(payload: ResearchRequest) -> Configuration:
-    overrides: Dict[str, Any] = {}
+    overrides: dict[str, Any] = {}
 
     if payload.search_api is not None:
         overrides["search_api"] = payload.search_api
@@ -117,7 +118,7 @@ def create_app() -> FastAPI:
         )
 
     @app.get("/healthz")
-    def health_check() -> Dict[str, str]:
+    def health_check() -> dict[str, str]:
         return {"status": "ok"}
 
     @app.post("/research", response_model=ResearchResponse)
@@ -163,7 +164,7 @@ def create_app() -> FastAPI:
             try:
                 for event in agent.run_stream(payload.topic):
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-            except Exception as exc:  # pragma: no cover - defensive guardrail
+            except Exception as exc:  # noqa: BLE001
                 logger.exception("Streaming research failed")
                 error_payload = {"type": "error", "detail": str(exc)}
                 yield f"data: {json.dumps(error_payload, ensure_ascii=False)}\n\n"

@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, List, Optional
+from typing import Any
 
 from hello_agents import ToolAwareSimpleAgent
 
-from models import SummaryState, TodoItem
 from config import Configuration
+from models import SummaryState, TodoItem
 from prompts import get_current_date, todo_planner_instructions
 from utils import strip_thinking_tokens
 
@@ -21,16 +21,17 @@ TOOL_CALL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+
 class PlanningService:
     """Wraps the planner agent to produce structured TODO items."""
 
     def __init__(self, planner_agent: ToolAwareSimpleAgent, config: Configuration) -> None:
+        """Initialize with a planner agent and runtime configuration."""
         self._agent = planner_agent
         self._config = config
 
-    def plan_todo_list(self, state: SummaryState) -> List[TodoItem]:
+    def plan_todo_list(self, state: SummaryState) -> list[TodoItem]:
         """Ask the planner agent to break the topic into actionable tasks."""
-
         prompt = todo_planner_instructions.format(
             current_date=get_current_date(),
             research_topic=state.research_topic,
@@ -42,15 +43,13 @@ class PlanningService:
         logger.info("Planner raw output (truncated): %s", response[:500])
 
         tasks_payload = self._extract_tasks(response)
-        todo_items: List[TodoItem] = []
+        todo_items: list[TodoItem] = []
+        topic = state.research_topic or "研究主题"
 
         for idx, item in enumerate(tasks_payload, start=1):
             title = str(item.get("title") or f"任务{idx}").strip()
             intent = str(item.get("intent") or "聚焦主题的关键问题").strip()
-            query = str(item.get("query") or state.research_topic).strip()
-
-            if not query:
-                query = state.research_topic
+            query = str(item.get("query") or topic).strip() or topic
 
             task = TodoItem(
                 id=idx,
@@ -69,26 +68,25 @@ class PlanningService:
     @staticmethod
     def create_fallback_task(state: SummaryState) -> TodoItem:
         """Create a minimal fallback task when planning failed."""
-
+        topic = state.research_topic or "基础背景梳理"
         return TodoItem(
             id=1,
             title="基础背景梳理",
             intent="收集主题的核心背景与最新动态",
-            query=f"{state.research_topic} 最新进展" if state.research_topic else "基础背景梳理",
+            query=f"{topic} 最新进展",
         )
 
     # ------------------------------------------------------------------
     # Parsing helpers
     # ------------------------------------------------------------------
-    def _extract_tasks(self, raw_response: str) -> List[dict[str, Any]]:
+    def _extract_tasks(self, raw_response: str) -> list[dict[str, Any]]:
         """Parse planner output into a list of task dictionaries."""
-
         text = raw_response.strip()
         if self._config.strip_thinking_tokens:
             text = strip_thinking_tokens(text)
 
         json_payload = self._extract_json_payload(text)
-        tasks: List[dict[str, Any]] = []
+        tasks: list[dict[str, Any]] = []
 
         if isinstance(json_payload, dict):
             candidate = json_payload.get("tasks")
@@ -110,9 +108,8 @@ class PlanningService:
 
         return tasks
 
-    def _extract_json_payload(self, text: str) -> Optional[dict[str, Any] | list]:
+    def _extract_json_payload(self, text: str) -> dict[str, Any] | list[Any] | None:
         """Try to locate and parse a JSON object or array from the text."""
-
         start = text.find("{")
         end = text.rfind("}")
         if start != -1 and end != -1 and end > start:
@@ -133,9 +130,8 @@ class PlanningService:
 
         return None
 
-    def _extract_tool_payload(self, text: str) -> Optional[dict[str, Any]]:
+    def _extract_tool_payload(self, text: str) -> dict[str, Any] | None:
         """Parse the first TOOL_CALL expression in the output."""
-
         match = TOOL_CALL_PATTERN.search(text)
         if not match:
             return None
